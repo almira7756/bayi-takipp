@@ -96,21 +96,43 @@
       position: relative;
       box-shadow: 0 1px 5px rgba(0,0,0,0.1);
     }
-    .record .paid-label {
-      position: absolute;
-      top: 12px;
-      right: 110px;
-      background: #28a745;
-      color: white;
-      font-weight: 700;
-      padding: 4px 10px;
-      border-radius: 12px;
-      font-size: 12px;
-    }
-    .record .delete-btn {
+    /* Buton grubu */
+    .record .btn-group {
       position: absolute;
       top: 12px;
       right: 20px;
+      display: flex;
+      gap: 5px;
+    }
+    .record .btn-paid {
+      background: #28a745;
+      border: none;
+      color: white;
+      padding: 5px 10px;
+      border-radius: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 12px;
+      transition: background-color 0.3s ease;
+    }
+    .record .btn-paid:hover {
+      background-color: #218838;
+    }
+    .record .btn-unpaid {
+      background: #ffc107;
+      border: none;
+      color: #212529;
+      padding: 5px 10px;
+      border-radius: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 12px;
+      transition: background-color 0.3s ease;
+    }
+    .record .btn-unpaid:hover {
+      background-color: #e0a800;
+    }
+    .record .btn-delete {
       background: #dc3545;
       border: none;
       color: white;
@@ -121,7 +143,7 @@
       font-size: 12px;
       transition: background-color 0.3s ease;
     }
-    .record .delete-btn:hover {
+    .record .btn-delete:hover {
       background-color: #a71d2a;
     }
     .record small {
@@ -143,6 +165,30 @@
       margin-bottom: 15px;
       color: #004a99;
       font-weight: 600;
+    }
+
+    /* Mobil uyumluluk için */
+    @media (max-width: 600px) {
+      body {
+        padding: 10px;
+      }
+      .flex-row {
+        flex-direction: column;
+      }
+      .bayi-list, .borc-list {
+        max-height: none;
+        min-width: 100%;
+        margin-bottom: 20px;
+      }
+      input, button, select {
+        font-size: 14px;
+        padding: 10px;
+      }
+      .record button {
+        font-size: 11px;
+        padding: 4px 7px;
+        margin-left: 5px;
+      }
     }
   </style>
 </head>
@@ -183,6 +229,8 @@
             <option value="paid">Ödenenler</option>
             <option value="unpaid">Ödenmeyenler</option>
           </select>
+          <input type="date" id="startDate" onchange="renderDebtRecords()" />
+          <input type="date" id="endDate" onchange="renderDebtRecords()" />
         </div>
         <button onclick="sendWhatsApp()" style="background:#25d366;">WhatsApp ile Borç Bildirimi Gönder</button>
         <div id="debtRecordList"></div>
@@ -271,7 +319,9 @@ function showDealerDetails() {
   document.getElementById("selectedDealerTitle").textContent = `${dealer.name} - Borç Kayıtları`;
   document.getElementById("borcForm").classList.remove("hidden");
   renderDebtRecords();
+  drawChart();
 }
+
 function addDebtRecord() {
   if (selectedDealerIndex === null) return alert("Lütfen önce bir bayi seçin.");
   const jobDesc = document.getElementById("jobDesc").value.trim();
@@ -288,6 +338,7 @@ function addDebtRecord() {
   document.getElementById("debtAmount").value = "";
   document.getElementById("paidCheckbox").checked = false;
   renderDebtRecords();
+  drawChart();
 }
 
 function renderDebtRecords() {
@@ -296,27 +347,71 @@ function renderDebtRecords() {
   const dealer = dealers[selectedDealerIndex];
   const searchText = document.getElementById("searchInput").value.toLowerCase();
   const filter = document.getElementById("paidFilter").value;
+  const startDateStr = document.getElementById("startDate").value;
+  const endDateStr = document.getElementById("endDate").value;
+
   const filtered = dealer.debts.filter(d => {
     const matchSearch = d.job.toLowerCase().includes(searchText);
     const matchFilter = filter === "all" ? true : filter === "paid" ? d.paid : !d.paid;
-    return matchSearch && matchFilter;
+
+    let matchDate = true;
+    if (startDateStr) {
+      matchDate = new Date(d.date) >= new Date(startDateStr);
+    }
+    if (matchDate && endDateStr) {
+      matchDate = new Date(d.date) <= new Date(endDateStr);
+    }
+
+    return matchSearch && matchFilter && matchDate;
   });
+
   if (filtered.length === 0) {
     list.innerHTML = "<p>Gösterilecek kayıt yok.</p>";
     return;
   }
+
   filtered.forEach(record => {
     const div = document.createElement("div");
     div.classList.add("record");
     const dateObj = new Date(record.date);
     const formattedDate = dateObj.toLocaleDateString("tr-TR") + " " + dateObj.toLocaleTimeString("tr-TR");
+
+    // Buton grubu oluştur
+    const btnGroup = document.createElement("div");
+    btnGroup.classList.add("btn-group");
+
+    // Ödendi / Ödenmedi butonları (duruma göre renk ve işlev değişiyor)
+    if (record.paid) {
+      const unpaidBtn = document.createElement("button");
+      unpaidBtn.textContent = "Ödenmedi Yap";
+      unpaidBtn.classList.add("btn-unpaid");
+      unpaidBtn.onclick = () => {
+        markAsUnpaid(record.id);
+      };
+      btnGroup.appendChild(unpaidBtn);
+    } else {
+      const paidBtn = document.createElement("button");
+      paidBtn.textContent = "Ödendi Yap";
+      paidBtn.classList.add("btn-paid");
+      paidBtn.onclick = () => {
+        markAsPaid(record.id);
+      };
+      btnGroup.appendChild(paidBtn);
+    }
+
+    // Silme butonu
+    const deleteBtn = document.createElement("button");
+    deleteBtn.textContent = "Sil";
+    deleteBtn.classList.add("btn-delete");
+    deleteBtn.onclick = () => deleteDebt(record.id);
+    btnGroup.appendChild(deleteBtn);
+
     div.innerHTML = `
       <strong>İş:</strong> ${record.job}<br/>
       <strong>Tutar:</strong> ₺${record.amount.toFixed(2)}<br/>
       <small>İşlem Tarihi: ${formattedDate}</small>
-      ${record.paid ? `<span class="paid-label">Ödendi</span>` : `<button class="delete-btn" onclick="markAsPaid(${record.id})">Borç Ödendi</button>`}
-      <button class="delete-btn" onclick="deleteDebt(${record.id})">X</button>
     `;
+    div.appendChild(btnGroup);
     list.appendChild(div);
   });
 }
@@ -328,13 +423,27 @@ function markAsPaid(id) {
     debt.paid = true;
     saveDealers();
     renderDebtRecords();
+    drawChart();
+  }
+}
+function markAsUnpaid(id) {
+  const debts = dealers[selectedDealerIndex].debts;
+  const debt = debts.find(d => d.id === id);
+  if (debt) {
+    debt.paid = false;
+    saveDealers();
+    renderDebtRecords();
+    drawChart();
   }
 }
 
 function deleteDebt(id) {
-  dealers[selectedDealerIndex].debts = dealers[selectedDealerIndex].debts.filter(d => d.id !== id);
+  if (!confirm("Bu borç kaydını silmek istediğinize emin misiniz?")) return;
+  let debts = dealers[selectedDealerIndex].debts;
+  dealers[selectedDealerIndex].debts = debts.filter(d => d.id !== id);
   saveDealers();
   renderDebtRecords();
+  drawChart();
 }
 
 function sendWhatsApp() {
@@ -343,99 +452,158 @@ function sendWhatsApp() {
   let totalDebt = 0;
   let message = `Merhaba ${dealer.name},\n\nBorç durumunuz:\n`;
   dealer.debts.forEach(d => {
-    message += `- ${d.job}: ₺${d.amount.toFixed(2)} (${d.paid ? "Ödendi" : "Ödenmedi"})\n`;
-    if (!d.paid) totalDebt += d.amount;
+    // Sadece ödenmemiş borçlar mesajda olacak
+    if (!d.paid) {
+      message += `- ${d.job}: ₺${d.amount.toFixed(2)} (Ödenmedi)\n`;
+      totalDebt += d.amount;
+    }
   });
   message += `\nToplam Borç: ₺${totalDebt.toFixed(2)}\nTeşekkürler.`;
   const encodedMessage = encodeURIComponent(message);
   window.open(`https://wa.me/?text=${encodedMessage}`, '_blank');
 }
 
-function downloadAllAsPDF() {
+// PDF Oluşturma - Bu bayi için borçları PDF yapar
+async function downloadCurrentDealerPDF() {
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF();
-  let y = 10;
-  dealers.forEach(dealer => {
-    doc.text(`📌 ${dealer.name}`, 10, y); y += 6;
-    dealer.debts.forEach(d => {
-      const t = new Date(d.date).toLocaleDateString("tr-TR") + " - " + d.job + " - ₺" + d.amount.toFixed(2) + (d.paid ? " ✅" : " ❌");
-      doc.text(t, 10, y); y += 6;
-    });
-    y += 4;
-  });
-  doc.save("tum-kayitlar.pdf");
-}
-
-function downloadCurrentDealerPDF() {
-  const { jsPDF } = window.jspdf;
+  if (selectedDealerIndex === null) return alert("Lütfen önce bir bayi seçin.");
   const doc = new jsPDF();
   const dealer = dealers[selectedDealerIndex];
-  let y = 10;
-  doc.text(`${dealer.name} - Borçlar`, 10, y); y += 10;
+  doc.setFontSize(18);
+  doc.text(`Almira Bilişim - Borç Listesi`, 14, 20);
+  doc.setFontSize(14);
+  doc.text(`Bayi: ${dealer.name}`, 14, 30);
+  let y = 40;
   dealer.debts.forEach(d => {
-    const t = new Date(d.date).toLocaleDateString("tr-TR") + " - " + d.job + " - ₺" + d.amount.toFixed(2) + (d.paid ? " ✅" : " ❌");
-    doc.text(t, 10, y); y += 6;
+    const date = new Date(d.date).toLocaleDateString("tr-TR");
+    const status = d.paid ? "Ödendi" : "Ödenmedi";
+    doc.setFontSize(12);
+    doc.text(`İş: ${d.job}`, 14, y);
+    doc.text(`Tutar: ₺${d.amount.toFixed(2)} - Durum: ${status} - Tarih: ${date}`, 14, y + 7);
+    y += 15;
+    if (y > 270) {
+      doc.addPage();
+      y = 20;
+    }
   });
-  doc.save(`${dealer.name.replace(/\s+/g, '_')}_fatura.pdf`);
+  doc.save(`Borclar_${dealer.name}.pdf`);
 }
 
-function ekleNot() {
-  const yeniNot = document.getElementById("yeniNot").value.trim();
-  if (!yeniNot) return alert("Not boş olamaz!");
-  const notlar = JSON.parse(localStorage.getItem("notlarListesi") || "[]");
-  notlar.push({ id: Date.now(), text: yeniNot });
-  localStorage.setItem("notlarListesi", JSON.stringify(notlar));
-  document.getElementById("yeniNot").value = "";
-  guncelleNotlar();
-}
-
-function guncelleNotlar() {
-  const liste = document.getElementById("notListesi");
-  liste.innerHTML = "";
-  const notlar = JSON.parse(localStorage.getItem("notlarListesi") || "[]");
-  notlar.forEach(not => {
-    const li = document.createElement("li");
-    li.innerHTML = `${not.text} <button onclick="silNot(${not.id})">Sil</button>`;
-    liste.appendChild(li);
+// PDF Tüm bayiler için
+async function downloadAllAsPDF() {
+  const { jsPDF } = window.jspdf;
+  if(dealers.length === 0) return alert("Hiç bayi yok.");
+  const doc = new jsPDF();
+  doc.setFontSize(20);
+  doc.text("Almira Bilişim - Tüm Bayi Borç Listesi", 14, 20);
+  let y = 30;
+  dealers.forEach((dealer, i) => {
+    doc.setFontSize(16);
+    doc.text(`Bayi: ${dealer.name}`, 14, y);
+    y += 8;
+    if (dealer.debts.length === 0) {
+      doc.setFontSize(12);
+      doc.text("Borç kaydı yok.", 18, y);
+      y += 10;
+    } else {
+      dealer.debts.forEach(d => {
+        const date = new Date(d.date).toLocaleDateString("tr-TR");
+        const status = d.paid ? "Ödendi" : "Ödenmedi";
+        doc.setFontSize(12);
+        doc.text(`- ${d.job} | ₺${d.amount.toFixed(2)} | ${status} | ${date}`, 18, y);
+        y += 7;
+        if (y > 280) {
+          doc.addPage();
+          y = 20;
+        }
+      });
+    }
+    y += 10;
+    if (y > 280 && i < dealers.length - 1) {
+      doc.addPage();
+      y = 20;
+    }
   });
+  doc.save("Tüm_Bayiler_Borç_Listesi.pdf");
 }
 
-function silNot(id) {
-  let notlar = JSON.parse(localStorage.getItem("notlarListesi") || "[]");
-  notlar = notlar.filter(n => n.id !== id);
-  localStorage.setItem("notlarListesi", JSON.stringify(notlar));
-  guncelleNotlar();
-}
-
+// Grafik için Chart.js
+let chartInstance = null;
 function drawChart() {
-  const ctx = document.getElementById("chart").getContext("2d");
+  const ctx = document.getElementById('chart').getContext('2d');
+  if (chartInstance) chartInstance.destroy();
   const dealer = dealers[selectedDealerIndex];
-  const paid = dealer.debts.filter(d => d.paid).reduce((a, b) => a + b.amount, 0);
-  const unpaid = dealer.debts.filter(d => !d.paid).reduce((a, b) => a + b.amount, 0);
-  new Chart(ctx, {
-    type: "doughnut",
+  if (!dealer) return;
+  // Borçları tarih bazında toplama
+  let dateMap = {};
+  dealer.debts.forEach(d => {
+    let dateStr = new Date(d.date).toLocaleDateString("tr-TR");
+    if (!dateMap[dateStr]) dateMap[dateStr] = 0;
+    dateMap[dateStr] += d.amount * (d.paid ? 0 : 1); // Ödenmemiş borçları göster
+  });
+  const labels = Object.keys(dateMap).sort((a,b) => new Date(a) - new Date(b));
+  const data = labels.map(d => dateMap[d]);
+
+  chartInstance = new Chart(ctx, {
+    type: 'bar',
     data: {
-      labels: ["Ödenen", "Ödenmeyen"],
-      datasets: [{ data: [paid, unpaid], backgroundColor: ["#28a745", "#dc3545"] }]
+      labels,
+      datasets: [{
+        label: 'Ödenmemiş Borç (₺)',
+        data,
+        backgroundColor: '#007bff88',
+        borderColor: '#0056b3',
+        borderWidth: 1,
+        borderRadius: 4
+      }]
     },
     options: {
       responsive: true,
-      plugins: { legend: { position: "bottom" } }
+      scales: {
+        y: { beginAtZero: true }
+      }
     }
   });
 }
-</script>
-<script>
-window.addEventListener("DOMContentLoaded", () => {
-  updateClock();
-  setInterval(updateClock, 1000);
-  renderDealerList();
+
+// Notlar bölümü (basit)
+function guncelleNotlar() {
+  const ul = document.getElementById("notListesi");
+  ul.innerHTML = "";
+  const notes = JSON.parse(localStorage.getItem("notes") || "[]");
+  notes.forEach((note, i) => {
+    const li = document.createElement("li");
+    li.textContent = note;
+    li.style.marginBottom = "6px";
+    const btnDel = document.createElement("button");
+    btnDel.textContent = "Sil";
+    btnDel.style.marginLeft = "10px";
+    btnDel.style.background = "#dc3545";
+    btnDel.style.color = "white";
+    btnDel.style.border = "none";
+    btnDel.style.borderRadius = "5px";
+    btnDel.style.cursor = "pointer";
+    btnDel.onclick = () => {
+      notes.splice(i,1);
+      localStorage.setItem("notes", JSON.stringify(notes));
+      guncelleNotlar();
+    };
+    li.appendChild(btnDel);
+    ul.appendChild(li);
+  });
+}
+
+function ekleNot() {
+  const input = document.getElementById("yeniNot");
+  let val = input.value.trim();
+  if (!val) return alert("Lütfen bir not yazın.");
+  const notes = JSON.parse(localStorage.getItem("notes") || "[]");
+  notes.push(val);
+  localStorage.setItem("notes", JSON.stringify(notes));
+  input.value = "";
   guncelleNotlar();
-});
+}
 </script>
 
-<footer style="text-align:center; margin-top:30px; color:#555; font-size:14px;">
-  Bu yazılım <strong>Almira Bilişim</strong> tarafından geliştirilmiştir.
-</footer>
 </body>
 </html>
